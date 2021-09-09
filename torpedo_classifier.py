@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 import torch.nn.functional
 import torch.optim
-from torch.nn.utils.rnn import pad_sequence, pad_packed_sequence, pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence
 import matplotlib.pyplot as plt
 
 
@@ -16,7 +16,10 @@ class TorpedoDataset(Dataset):
         raw_data = pd.read_csv(filepath, header=None)
         df = pd.DataFrame(raw_data)
         df = df.iloc[0:, 1:]
-        for i in range(20):
+        col_nums = df.shape[1]
+        iter_nums = int((col_nums - 1) / 20)
+        # for i in range(20):
+        for i in range(iter_nums):
             df_1 = pd.DataFrame(raw_data)
             df_1 = df_1.iloc[0:, 1:i * 20 + 21]
             df = pd.concat([df, df_1])
@@ -101,24 +104,29 @@ class TorpedoFullDataset(Dataset):
         return self.len
 
 
-train_set = TorpedoDataset('train2.csv')
+train_set = TorpedoDataset('train.csv')
 train_loader = DataLoader(dataset=train_set, batch_size=1500, shuffle=True)
-validate_set = TorpedoDataset('test2.csv')
+validate_set = TorpedoDataset('validate.csv')
 validate_loader = DataLoader(dataset=validate_set, batch_size=600, shuffle=False)
 
-# 不完全轨迹序列验证集
+"""
+不完全轨迹序列验证集
+
+"""
+
 test_loader_list = []
 for i in range(24):
-    test_part_set = TorpedoDivideDataset('add.csv', length=21+i*20)
+    test_part_set = TorpedoDivideDataset('test.csv', length=21+i*20)
     test_part_loader = DataLoader(dataset=test_part_set, batch_size=100, shuffle=False)
     test_loader_list.append(test_part_loader)
 
-test_set = TorpedoFullDataset('add.csv')
+test_set = TorpedoFullDataset('test.csv')
 test_loader = DataLoader(dataset=test_set, batch_size=100, shuffle=False)
 
 
 n_class = 3
 N_EPOCHS = 200
+
 USE_GPU = torch.cuda.is_available()
 device = torch.device("cuda:1")
 
@@ -153,8 +161,6 @@ class RNNClassifier(torch.nn.Module):
         batch_size = input_data.size(0)
         hidden = self._init_hidden(batch_size)
         gru_input = pack_padded_sequence(input_data, seq_lengths, batch_first=True)
-        # hidden = hidden.long()
-        # gru_input = gru_input.long()
         output, hidden = self.gru(gru_input, hidden)
         if self.n_directions == 2:
             hidden_cat = torch.cat([hidden[-1], hidden[-2]], dim=1)
@@ -261,6 +267,9 @@ def test_model():
 
 
 if __name__ == '__main__':
+    """
+    训练模型时使用此段代码
+    """
     # classifier = RNNClassifier(input_size=2, hidden_size=100, output_size=n_class).to(device)
     #
     # criterion = torch.nn.CrossEntropyLoss()
@@ -278,7 +287,7 @@ if __name__ == '__main__':
     #     if acc > max_acc:
     #         max_acc = acc
     #         print("save model,the accuracy of model is %f" % max_acc)
-    #         torch.save(classifier.state_dict(), '/data2/home/chaoqun/simulator/model/advance2_model')
+    #         torch.save(classifier.state_dict(), '/data2/home/chaoqun/simulator/model/advance_model')
     # epoch = np.arange(1, len(acc_list) + 1, 1)
     # acc_list = [i * 100 for i in acc_list]
     # acc_list = np.array(acc_list)
@@ -289,10 +298,15 @@ if __name__ == '__main__':
     # plt.show()
 
     """
-    将不同序列长度丢进用全长序列训练好的模型验证识别率规律
+    载入已经训练好的模时先将上面的代码注释掉，再载入模型进行分类识别
+    将不同长度的非全长序列丢进用全长序列训练好的模型model_save验证识别率规律
+    将不同长度的非全长序列丢进用非全长序列训练好的模型advance2_model验证识别率规律
     """
     classifier = RNNClassifier(input_size=2, hidden_size=100, output_size=n_class).to(device)
-    classifier.load_state_dict(torch.load('/data2/home/chaoqun/simulator/model/advance2_model'))
+    # 载入全长序列训练好的模型
+    # classifier.load_state_dict(torch.load('/data2/home/chaoqun/simulator/model/model'))
+    # 载入非全长序列训练好的模型（对非全长序列识别效果更好）
+    classifier.load_state_dict(torch.load('/data2/home/chaoqun/simulator/model/advance_model'))
     acc_list = test_part_model()
     acc_max = test_model()
     acc_list.append(acc_max)
